@@ -1,0 +1,89 @@
+object Form1: TForm1
+  Left = 0
+  Top = 0
+  Caption = 'Desktop Streaming Server'
+  ClientHeight = 705
+  ClientWidth = 1121
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  Position = poScreenCenter
+  OnCreate = FormCreate
+  DesignSize = (
+    1121
+    705)
+  TextHeight = 15
+  object Image1: TImage
+    Left = 0
+    Top = 0
+    Width = 1122
+    Height = 652
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    Stretch = True
+    ExplicitWidth = 625
+    ExplicitHeight = 412
+  end
+  object Label1: TLabel
+    Left = 887
+    Top = 661
+    Width = 83
+    Height = 15
+    Anchors = [akRight, akBottom]
+    Caption = 'Select Monitor: '
+    ExplicitLeft = 390
+    ExplicitTop = 421
+  end
+  object ComboBox1: TComboBox
+    Left = 976
+    Top = 657
+    Width = 145
+    Height = 23
+    Anchors = [akRight, akBottom]
+    TabOrder = 0
+    OnChange = ComboBox1Change
+    ExplicitLeft = 479
+    ExplicitTop = 417
+  end
+  object StatusBar1: TStatusBar
+    Left = 0
+    Top = 686
+    Width = 1121
+    Height = 19
+    Panels = <
+      item
+        Text = 'Total Monitors: 0'
+        Width = 150
+      end>
+    ExplicitTop = 446
+    ExplicitWidth = 624
+  end
+  object Button1: TButton
+    Left = 0
+    Top = 655
+    Width = 881
+    Height = 25
+    Anchors = [akLeft, akRight, akBottom]
+    Caption = 'Start Desktop Capture'
+    Enabled = False
+    TabOrder = 2
+    OnClick = Button1Click
+    ExplicitTop = 415
+    ExplicitWidth = 384
+  end
+  object ncServerSource1: TncServerSource
+    EncryptionKey = 'SetEncryptionKey'
+    OnConnected = ncServerSource1Connected
+    OnDisconnected = ncServerSource1Disconnected
+    OnHandleCommand = ncServerSource1HandleCommand
+    Left = 40
+    Top = 8
+  end
+  object Timer1: TTimer
+    OnTimer = Timer1Timer
+    Left = 40
+    Top = 64
+  end
+end

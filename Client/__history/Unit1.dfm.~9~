@@ -1,0 +1,38 @@
+object Form1: TForm1
+  Left = 0
+  Top = 0
+  Caption = 'Desktop Streaming Client'
+  ClientHeight = 77
+  ClientWidth = 300
+  Color = clBtnFace
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  OnCreate = FormCreate
+  TextHeight = 15
+  object ncClientSource1: TncClientSource
+    EncryptionKey = 'SetEncryptionKey'
+    OnConnected = ncClientSource1Connected
+    OnDisconnected = ncClientSource1Disconnected
+    OnHandleCommand = ncClientSource1HandleCommand
+    Host = 'LocalHost'
+    Left = 40
+    Top = 16
+  end
+  object Timer1: TTimer
+    Enabled = False
+    Interval = 500
+    OnTimer = Timer1Timer
+    Left = 128
+    Top = 16
+  end
+  object ConnectionTimer: TTimer
+    Enabled = False
+    Interval = 6000
+    OnTimer = ConnectionTimerTimer
+    Left = 216
+    Top = 16
+  end
+end
