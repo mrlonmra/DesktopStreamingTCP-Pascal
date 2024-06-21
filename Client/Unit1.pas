@@ -23,6 +23,7 @@ type
   private
     procedure HandleCommand(const aData: string);
     procedure SaveReceivedImageToTemp(aBitmap: TBitmap);
+    procedure LogBase64ToFile(const Base64Data: string);
     function GetScreenShot(MonitorIndex: Integer): TBitmap;
   public
   end;
@@ -90,7 +91,7 @@ var
   bmp: TBitmap;
   bytestream: TBytesStream;
   bytes: TBytes;
-  base64Data: string;
+  Base64Data: string;
 begin
   sl := TStringList.Create;
   try
@@ -109,8 +110,9 @@ begin
           SetLength(bytes, bytestream.Size);
           bytestream.Position := 0;
           bytestream.ReadBuffer(bytes[0], bytestream.Size);
-          base64Data := TNetEncoding.Base64.EncodeBytesToString(bytes);
-          ClientSocket1.Socket.SendText('ScreenShot|' + base64Data);
+          Base64Data := TNetEncoding.Base64.EncodeBytesToString(bytes);
+          LogBase64ToFile(Base64Data);
+          ClientSocket1.Socket.SendText('ScreenShot|' + Base64Data);
         finally
           bytestream.Free;
         end;
@@ -135,6 +137,24 @@ begin
     Now) + '.bmp';
 
   aBitmap.SaveToFile(FileName);
+end;
+
+procedure TForm1.LogBase64ToFile(const Base64Data: string);
+var
+  LogFileName: string;
+  LogFile: TextFile;
+begin
+  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_cliente_log.txt';
+  AssignFile(LogFile, LogFileName);
+  if FileExists(LogFileName) then
+    Append(LogFile)
+  else
+    Rewrite(LogFile);
+  try
+    WriteLn(LogFile, Base64Data);
+  finally
+    CloseFile(LogFile);
+  end;
 end;
 
 function TForm1.GetScreenShot(MonitorIndex: Integer): TBitmap;

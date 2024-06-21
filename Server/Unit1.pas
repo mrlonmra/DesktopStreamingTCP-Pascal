@@ -18,6 +18,7 @@ type
     Timer1: TTimer;
     ServerSocket1: TServerSocket;
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure ComboBox1Change(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
@@ -28,8 +29,11 @@ type
     procedure ServerSocket1ClientRead(Sender: TObject;
       Socket: TCustomWinSocket);
   private
+    CompleteData: TStringList;
+    ExpectedTotalParts: Integer;
     procedure HandleCommand(Socket: TCustomWinSocket; const aData: TBytes);
     procedure SaveReceivedImageToTemp(aData: TBytes);
+    procedure LogBase64ToFile(const Base64Data: string);
   public
   end;
 
@@ -70,6 +74,14 @@ begin
   ServerSocket1.OnClientRead := ServerSocket1ClientRead;
   ServerSocket1.Active := true;
   ShowMessage('Server is active.');
+
+  CompleteData := TStringList.Create;
+  ExpectedTotalParts := 0;
+end;
+
+procedure TForm1.FormDestroy(Sender: TObject);
+begin
+  CompleteData.Free;
 end;
 
 procedure TForm1.ServerSocket1ClientConnect(Sender: TObject;
@@ -103,8 +115,8 @@ var
   sl: TStringList;
   MonitorCount: Integer;
   I: Integer;
-  ScreenshotData: TBytes;
   Base64String: string;
+  ScreenshotData: TBytes;
   MemoryStream: TMemoryStream;
 begin
   sl := TStringList.Create;
@@ -126,8 +138,9 @@ begin
     else if sl[0] = 'ScreenShot' then
     begin
       Base64String := sl[1];
+      LogBase64ToFile(Base64String);
       ScreenshotData := TNetEncoding.Base64.DecodeStringToBytes(Base64String);
-
+      SaveReceivedImageToTemp(ScreenshotData);
       TThread.Queue(nil,
         procedure
         begin
@@ -136,8 +149,6 @@ begin
             MemoryStream.WriteBuffer(ScreenshotData[0], Length(ScreenshotData));
             MemoryStream.Position := 0;
             Image1.Picture.LoadFromStream(MemoryStream);
-            SaveReceivedImageToTemp(ScreenshotData);
-            // Save the image to temp directory
           finally
             MemoryStream.Free;
           end;
@@ -185,6 +196,24 @@ begin
   begin
     ServerSocket1.Socket.Connections[I].SendText
       ('ScreenShot|' + IntToStr(ComboBox1.ItemIndex));
+  end;
+end;
+
+procedure TForm1.LogBase64ToFile(const Base64Data: string);
+var
+  LogFileName: string;
+  LogFile: TextFile;
+begin
+  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_log.txt';
+  AssignFile(LogFile, LogFileName);
+  if FileExists(LogFileName) then
+    Append(LogFile)
+  else
+    Rewrite(LogFile);
+  try
+    WriteLn(LogFile, Base64Data);
+  finally
+    CloseFile(LogFile);
   end;
 end;
 
