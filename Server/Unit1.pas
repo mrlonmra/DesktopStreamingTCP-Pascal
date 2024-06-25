@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
   System.Classes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, System.NetEncoding,
-  Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.StdCtrls, System.Win.ScktComp;
+  Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.StdCtrls, System.Win.ScktComp, JPEG;
 
 type
   TForm1 = class(TForm)
@@ -73,7 +73,7 @@ begin
   ServerSocket1.OnClientDisconnect := ServerSocket1ClientDisconnect;
   ServerSocket1.OnClientRead := ServerSocket1ClientRead;
   ServerSocket1.Active := true;
-  ShowMessage('Server is active.');
+  // ShowMessage('Server is active.');
 
   CompleteData := TStringList.Create;
   ExpectedTotalParts := 0;
@@ -89,7 +89,7 @@ procedure TForm1.ServerSocket1ClientConnect(Sender: TObject;
 begin
   Caption := Caption + ' | Client Connected!';
   Button1.Enabled := true;
-  ShowMessage('Client connected.');
+  // ShowMessage('Client connected.');
 end;
 
 procedure TForm1.ServerSocket1ClientDisconnect(Sender: TObject;
@@ -97,7 +97,7 @@ procedure TForm1.ServerSocket1ClientDisconnect(Sender: TObject;
 begin
   Timer1.Enabled := false;
   Button1.Enabled := false;
-  ShowMessage('Client disconnected.');
+  // ShowMessage('Client disconnected.');
 end;
 
 procedure TForm1.ServerSocket1ClientRead(Sender: TObject;
@@ -118,6 +118,7 @@ var
   Base64String: string;
   ScreenshotData: TBytes;
   MemoryStream: TMemoryStream;
+  JPEG: TJPEGImage;
 begin
   sl := TStringList.Create;
   try
@@ -145,12 +146,15 @@ begin
         procedure
         begin
           MemoryStream := TMemoryStream.Create;
+          JPEG := TJPEGImage.Create;
           try
             MemoryStream.WriteBuffer(ScreenshotData[0], Length(ScreenshotData));
             MemoryStream.Position := 0;
-            Image1.Picture.LoadFromStream(MemoryStream);
+            JPEG.LoadFromStream(MemoryStream);
+            Image1.Picture.Assign(JPEG);
           finally
             MemoryStream.Free;
+            JPEG.Free;
           end;
         end);
     end;
@@ -163,28 +167,25 @@ procedure TForm1.SaveReceivedImageToTemp(aData: TBytes);
 var
   TempPath, FileName: string;
   ms: TMemoryStream;
-  bmp: TBitmap;
+  JPEG: TJPEGImage;
 begin
   TempPath := GetEnvironmentVariable('TEMP') + '\imagens_servidor';
   if not DirectoryExists(TempPath) then
     CreateDir(TempPath);
 
   FileName := TempPath + '\ReceivedImage_' + FormatDateTime('yyyymmdd_hhnnss',
-    Now) + '.bmp';
+    Now) + '.jpg';
 
   ms := TMemoryStream.Create;
+  JPEG := TJPEGImage.Create;
   try
     ms.WriteBuffer(aData[0], Length(aData));
     ms.Position := 0;
-    bmp := TBitmap.Create;
-    try
-      bmp.LoadFromStream(ms);
-      bmp.SaveToFile(FileName);
-    finally
-      bmp.Free;
-    end;
+    JPEG.LoadFromStream(ms);
+    JPEG.SaveToFile(FileName);
   finally
     ms.Free;
+    JPEG.Free;
   end;
 end;
 
@@ -204,7 +205,7 @@ var
   LogFileName: string;
   LogFile: TextFile;
 begin
-  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_log.txt';
+  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_server_log.txt';
   AssignFile(LogFile, LogFileName);
   if FileExists(LogFileName) then
     Append(LogFile)

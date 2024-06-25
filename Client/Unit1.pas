@@ -5,8 +5,7 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
   System.Classes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
-  Vcl.ExtCtrls,
-  pngimage, System.Win.ScktComp, System.NetEncoding;
+  Vcl.ExtCtrls, pngimage, System.Win.ScktComp, System.NetEncoding, JPEG;
 
 type
   TForm1 = class(TForm)
@@ -25,6 +24,8 @@ type
     procedure SaveReceivedImageToTemp(aBitmap: TBitmap);
     procedure LogBase64ToFile(const Base64Data: string);
     function GetScreenShot(MonitorIndex: Integer): TBitmap;
+    function CompressBitmapToJpeg(aBitmap: TBitmap;
+      NewWidth, NewHeight: Integer): TJPEGImage; // Alterado para TJPEGImage
   public
   end;
 
@@ -34,6 +35,10 @@ var
 implementation
 
 {$R *.dfm}
+
+const
+  SERVER_ADDRESS = '127.0.0.1';
+  SERVER_PORT = 3434;
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
@@ -50,14 +55,14 @@ begin
   try
     if not ClientSocket1.Active then
     begin
-      ClientSocket1.Address := '127.0.0.1';
-      ClientSocket1.Port := 3434;
+      ClientSocket1.Address := SERVER_ADDRESS;
+      ClientSocket1.Port := SERVER_PORT;
       ClientSocket1.Active := True;
-      ShowMessage('Attempting to connect to the server...');
+      // Optionally show a connection attempt message
     end;
   except
     on E: Exception do
-      ShowMessage('Connection attempt failed: ' + E.Message);
+      // Optionally log the exception
   end;
 end;
 
@@ -66,7 +71,7 @@ procedure TForm1.ClientSocket1Connect(Sender: TObject;
 begin
   Timer1.Enabled := True;
   ConnectionTimer.Enabled := False;
-  ShowMessage('Connected to server.');
+  // Optionally show a connection success message
 end;
 
 procedure TForm1.ClientSocket1Disconnect(Sender: TObject;
@@ -74,7 +79,7 @@ procedure TForm1.ClientSocket1Disconnect(Sender: TObject;
 begin
   Timer1.Enabled := False;
   ConnectionTimer.Enabled := True;
-  ShowMessage('Disconnected from server.');
+  // Optionally show a disconnection message
 end;
 
 procedure TForm1.ClientSocket1Read(Sender: TObject; Socket: TCustomWinSocket);
@@ -85,10 +90,42 @@ begin
   HandleCommand(ReceivedData);
 end;
 
+function TForm1.CompressBitmapToJpeg(aBitmap: TBitmap;
+  NewWidth, NewHeight: Integer): TJPEGImage;
+var
+  TempBitmap: TBitmap;
+  JPEGImage: TJPEGImage;
+begin
+  TempBitmap := TBitmap.Create;
+  try
+    TempBitmap.PixelFormat := aBitmap.PixelFormat;
+    TempBitmap.SetSize(NewWidth, NewHeight);
+
+    // Using high-quality stretch method
+    SetStretchBltMode(TempBitmap.Canvas.Handle, HALFTONE);
+    StretchBlt(TempBitmap.Canvas.Handle, 0, 0, NewWidth, NewHeight,
+      aBitmap.Canvas.Handle, 0, 0, aBitmap.Width, aBitmap.Height, SRCCOPY);
+
+    JPEGImage := TJPEGImage.Create;
+    try
+      // Set JPEG quality (0-100)
+      JPEGImage.CompressionQuality := 85;
+      JPEGImage.Assign(TempBitmap);
+      Result := JPEGImage;
+    finally
+      TempBitmap.Free;
+    end;
+  except
+    TempBitmap.Free;
+    raise;
+  end;
+end;
+
 procedure TForm1.HandleCommand(const aData: string);
 var
   sl: TStringList;
   bmp: TBitmap;
+  JPEG: TJPEGImage;
   bytestream: TBytesStream;
   bytes: TBytes;
   Base64Data: string;
@@ -102,21 +139,26 @@ begin
     if sl[0] = 'ScreenShot' then
     begin
       bmp := GetScreenShot(StrToInt(sl[1]));
-      SaveReceivedImageToTemp(bmp);
-      try
-        bytestream := TBytesStream.Create;
+      if Assigned(bmp) then
+      begin
+        JPEG := CompressBitmapToJpeg(bmp, bmp.Width div 3, bmp.Height div 3);
+        // Correção aqui
         try
-          bmp.SaveToStream(bytestream);
-          SetLength(bytes, bytestream.Size);
-          bytestream.Position := 0;
-          bytestream.ReadBuffer(bytes[0], bytestream.Size);
-          Base64Data := TNetEncoding.Base64.EncodeBytesToString(bytes);
-          LogBase64ToFile(Base64Data);
-          ClientSocket1.Socket.SendText('ScreenShot|' + Base64Data);
+          bytestream := TBytesStream.Create;
+          try
+            JPEG.SaveToStream(bytestream);
+            SetLength(bytes, bytestream.Size);
+            bytestream.Position := 0;
+            bytestream.ReadBuffer(bytes[0], bytestream.Size);
+            Base64Data := TNetEncoding.Base64.EncodeBytesToString(bytes);
+            LogBase64ToFile(Base64Data);
+            ClientSocket1.Socket.SendText('ScreenShot|' + Base64Data);
+          finally
+            bytestream.Free;
+          end;
         finally
-          bytestream.Free;
+          JPEG.Free;
         end;
-      finally
         bmp.Free;
       end;
     end;
@@ -129,13 +171,13 @@ procedure TForm1.SaveReceivedImageToTemp(aBitmap: TBitmap);
 var
   TempPath, FileName: string;
 begin
-  TempPath := GetEnvironmentVariable('TEMP') + '\imagens_cliente';
+  TempPath := IncludeTrailingPathDelimiter(GetEnvironmentVariable('TEMP')) +
+    'imagens_cliente';
   if not DirectoryExists(TempPath) then
     CreateDir(TempPath);
 
   FileName := TempPath + '\SendImage_' + FormatDateTime('yyyymmdd_hhnnss',
     Now) + '.bmp';
-
   aBitmap.SaveToFile(FileName);
 end;
 
@@ -144,7 +186,8 @@ var
   LogFileName: string;
   LogFile: TextFile;
 begin
-  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_cliente_log.txt';
+  LogFileName := IncludeTrailingPathDelimiter(GetEnvironmentVariable('TEMP')) +
+    'base64_cliente_log.txt';
   AssignFile(LogFile, LogFileName);
   if FileExists(LogFileName) then
     Append(LogFile)
@@ -165,7 +208,7 @@ begin
   Result := TBitmap.Create;
   try
     Monitor := Screen.Monitors[MonitorIndex];
-    Result.PixelFormat := pf32bit;
+    Result.PixelFormat := pf32bit; // Use 24-bit color depth
     Result.Width := Monitor.Width;
     Result.Height := Monitor.Height;
     DC := GetDC(0);
@@ -177,8 +220,12 @@ begin
       ReleaseDC(0, DC);
     end;
   except
-    Result.Free;
-    Result := nil;
+    on E: Exception do
+    begin
+      Result.Free;
+      Result := nil;
+      // Log the exception if necessary
+    end;
   end;
 end;
 
