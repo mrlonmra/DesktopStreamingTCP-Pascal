@@ -4,9 +4,9 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
-  System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, System.NetEncoding,
-  Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.StdCtrls, System.Win.ScktComp;
+  System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, System.NetEncoding,
+  Vcl.ComCtrls, Vcl.ExtCtrls, Vcl.StdCtrls, System.Win.ScktComp, JPEG;
 
 type
   TForm1 = class(TForm)
@@ -18,6 +18,7 @@ type
     Timer1: TTimer;
     ServerSocket1: TServerSocket;
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure ComboBox1Change(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
@@ -28,11 +29,12 @@ type
     procedure ServerSocket1ClientRead(Sender: TObject;
       Socket: TCustomWinSocket);
   private
-    { Private declarations }
+    CompleteData: TStringList;
+    ExpectedTotalParts: Integer;
     procedure HandleCommand(Socket: TCustomWinSocket; const aData: TBytes);
-     procedure SaveReceivedImageToTemp(aData: TBytes);
+    procedure SaveReceivedImageToTemp(aData: TBytes);
+    procedure LogBase64ToFile(const Base64Data: string);
   public
-    { Public declarations }
   end;
 
 var
@@ -71,6 +73,15 @@ begin
   ServerSocket1.OnClientDisconnect := ServerSocket1ClientDisconnect;
   ServerSocket1.OnClientRead := ServerSocket1ClientRead;
   ServerSocket1.Active := true;
+  // ShowMessage('Server is active.');
+
+  CompleteData := TStringList.Create;
+  ExpectedTotalParts := 0;
+end;
+
+procedure TForm1.FormDestroy(Sender: TObject);
+begin
+  CompleteData.Free;
 end;
 
 procedure TForm1.ServerSocket1ClientConnect(Sender: TObject;
@@ -78,6 +89,7 @@ procedure TForm1.ServerSocket1ClientConnect(Sender: TObject;
 begin
   Caption := Caption + ' | Client Connected!';
   Button1.Enabled := true;
+  // ShowMessage('Client connected.');
 end;
 
 procedure TForm1.ServerSocket1ClientDisconnect(Sender: TObject;
@@ -85,6 +97,7 @@ procedure TForm1.ServerSocket1ClientDisconnect(Sender: TObject;
 begin
   Timer1.Enabled := false;
   Button1.Enabled := false;
+  // ShowMessage('Client disconnected.');
 end;
 
 procedure TForm1.ServerSocket1ClientRead(Sender: TObject;
@@ -97,45 +110,17 @@ begin
   HandleCommand(Socket, ReceivedData);
 end;
 
-procedure TForm1.SaveReceivedImageToTemp(aData: TBytes);
-var
-  TempPath: string;
-  FileName: string;
-  ms: TMemoryStream;
-  bmp: TBitmap;
-begin
-  TempPath := GetEnvironmentVariable('TEMP') + '\imagens_servidor';
-  if not DirectoryExists(TempPath) then
-    CreateDir(TempPath);
-
-  FileName := TempPath + '\ReceivedImage_' + FormatDateTime('yyyymmdd_hhnnss',
-    Now) + '.bmp';
-
-  ms := TMemoryStream.Create;
-  try
-    ms.Write(aData[0], Length(aData));
-    ms.Position := 0;
-    bmp := TBitmap.Create;
-    try
-      bmp.LoadFromStream(ms);
-      bmp.SaveToFile(FileName);
-    finally
-      bmp.Free;
-    end;
-  finally
-    ms.Free;
-  end;
-end;
-
 procedure TForm1.HandleCommand(Socket: TCustomWinSocket; const aData: TBytes);
 var
   sl: TStringList;
   MonitorCount: Integer;
   I: Integer;
-  bytestream: TBytesStream;
-  screenshotData: TBytes;
+  Base64String: string;
+  ScreenshotData: TBytes;
+  MemoryStream: TMemoryStream;
+  JPEG: TJPEGImage;
 begin
-    sl := TStringList.Create;
+  sl := TStringList.Create;
   try
     sl.Delimiter := '|';
     sl.StrictDelimiter := true;
@@ -150,25 +135,57 @@ begin
       ComboBox1.ItemIndex := 0;
       StatusBar1.Panels[0].Text := 'Total Monitors: ' +
         IntToStr(ComboBox1.Items.Count);
-    end;
-
-    if sl[0] = 'ScreenShot' then
+    end
+    else if sl[0] = 'ScreenShot' then
     begin
+      Base64String := sl[1];
+      LogBase64ToFile(Base64String);
+      ScreenshotData := TNetEncoding.Base64.DecodeStringToBytes(Base64String);
+      SaveReceivedImageToTemp(ScreenshotData);
       TThread.Queue(nil,
         procedure
         begin
-          screenshotData := Copy(aData, 11, Length(aData) - 11);
-          SaveReceivedImageToTemp(aData); // Salva a imagem recebida na pasta temp
-          bytestream := TBytesStream.Create(screenshotData);
+          MemoryStream := TMemoryStream.Create;
+          JPEG := TJPEGImage.Create;
           try
-            Image1.Picture.LoadFromStream(bytestream);
+            MemoryStream.WriteBuffer(ScreenshotData[0], Length(ScreenshotData));
+            MemoryStream.Position := 0;
+            JPEG.LoadFromStream(MemoryStream);
+            Image1.Picture.Assign(JPEG);
           finally
-            bytestream.Free;
+            MemoryStream.Free;
+            JPEG.Free;
           end;
         end);
     end;
   finally
     sl.Free;
+  end;
+end;
+
+procedure TForm1.SaveReceivedImageToTemp(aData: TBytes);
+var
+  TempPath, FileName: string;
+  ms: TMemoryStream;
+  JPEG: TJPEGImage;
+begin
+  TempPath := GetEnvironmentVariable('TEMP') + '\imagens_servidor';
+  if not DirectoryExists(TempPath) then
+    CreateDir(TempPath);
+
+  FileName := TempPath + '\ReceivedImage_' + FormatDateTime('yyyymmdd_hhnnss',
+    Now) + '.jpg';
+
+  ms := TMemoryStream.Create;
+  JPEG := TJPEGImage.Create;
+  try
+    ms.WriteBuffer(aData[0], Length(aData));
+    ms.Position := 0;
+    JPEG.LoadFromStream(ms);
+    JPEG.SaveToFile(FileName);
+  finally
+    ms.Free;
+    JPEG.Free;
   end;
 end;
 
@@ -180,6 +197,24 @@ begin
   begin
     ServerSocket1.Socket.Connections[I].SendText
       ('ScreenShot|' + IntToStr(ComboBox1.ItemIndex));
+  end;
+end;
+
+procedure TForm1.LogBase64ToFile(const Base64Data: string);
+var
+  LogFileName: string;
+  LogFile: TextFile;
+begin
+  LogFileName := GetEnvironmentVariable('TEMP') + '\base64_server_log.txt';
+  AssignFile(LogFile, LogFileName);
+  if FileExists(LogFileName) then
+    Append(LogFile)
+  else
+    Rewrite(LogFile);
+  try
+    WriteLn(LogFile, Base64Data);
+  finally
+    CloseFile(LogFile);
   end;
 end;
 
